@@ -191,6 +191,3 @@ L’exploitation combine des techniques **réalistes**, **actuelles** et **avanc
 - Attaques AD CS (ESC16)
 - Accès WinRM et post-exploitation Windows
 - Compromission Domain Admin
-
-Source d’aide externe :
-https://www.hyhforever.top/posts/2025/05/htb-fluffy/
