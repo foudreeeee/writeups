@@ -12,7 +12,7 @@ Je commence par un nmap :
 
     nmap -sC -sV -sS IP
     
-Je commence par de l’énumération et du fuzzing sur le domaine :
+Puis de l’énumération et du fuzzing sur le domaine trouver :
 
     environment.htb
 
