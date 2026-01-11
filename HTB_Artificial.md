@@ -52,7 +52,7 @@ Une fois la base récupérée, j’identifie un utilisateur valide ainsi qu’un
 
 ## Craquage du mot de passe et accès SSH
 
-Je soumets le hash à un outil de cracking (Hashcat 3200).  
+Je soumets le hash à Crackstation.
 Une fois le mot de passe retrouvé en clair, je peux me connecter en SSH :
 
     ssh gael@10.10.11.74
