@@ -8,7 +8,10 @@ L’objectif est d’obtenir un accès initial à l’application web, puis d’
 ---
 
 ## Reconnaissance
+Je commence par un nmap :
 
+    nmap -sC -sV -sS IP
+    
 Je commence par de l’énumération et du fuzzing sur le domaine :
 
     environment.htb
