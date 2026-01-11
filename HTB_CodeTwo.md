@@ -6,8 +6,6 @@ Dans ce challenge, je fais face à une application web exposant un éditeur de c
 L’éditeur permet d’exécuter du code côté serveur.  
 L’objectif est d’obtenir un accès initial, puis d’escalader mes privilèges jusqu’à obtenir un accès **root**.
 
-Toutes les informations sensibles ont été volontairement anonymisées pour publication publique.
-
 ---
 
 ## Reconnaissance
