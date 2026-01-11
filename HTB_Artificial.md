@@ -152,8 +152,3 @@ L’exploitation combine attaque applicative, exfiltration de données, cracking
 - Tunneling SSH (port forwarding)
 - Escalade de privilèges via service interne
 
----
-
-## Notes
-
-Toutes les adresses IP, noms d’utilisateurs, chemins exacts, secrets et flags ont été volontairement anonymisés pour permettre une publication publique sur GitHub.
