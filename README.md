@@ -43,12 +43,23 @@ Each writeup follows a standard structure:
 
 - Artificial  
 - CodeTwo  
+- Devarea  
+- Devhub  
 - Editor  
 - Environment  
 - Era  
 - Fluffy  
+- Helix  
+- Kobold  
 - Planning  
 - Previous  
+- Principal  
+- Reactor  
+- Silentium  
+- SmartHire  
+- Snapped  
+- Sorcery  
+- Variatype  
 
 Each file is available on its own in Markdown.
 
