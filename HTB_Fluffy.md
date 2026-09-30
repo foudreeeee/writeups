@@ -1,193 +1,193 @@
 # CTF – Fluffy (Writeup)
 
-## Contexte
+## Context
 
-Dans ce challenge Hack The Box de type **Windows / Active Directory**, la machine cible est accessible à l’adresse `10.10.11.69` sous le domaine `fluffy.htb`.  
-Des identifiants initiaux sont fournis, permettant de démarrer l’énumération interne du domaine.
+In this **Windows / Active Directory** Hack The Box challenge, the target machine is reachable at `10.10.11.69` under the domain `fluffy.htb`.  
+Initial credentials are provided, which let me start enumerating the domain internally.
 
-L’objectif est d’obtenir un accès utilisateur, puis d’escalader progressivement les privilèges jusqu’à devenir **Domain Administrator**.
+The goal is to get user access, then escalate privileges step by step up to **Domain Administrator**.
 
 ---
 
-## Reconnaissance initiale
+## Initial recon
 
-Je commence par un scan Nmap afin d’identifier les services exposés :
+I start with an Nmap scan to identify the exposed services:
 
     nmap -sC -sV 10.10.11.69
 
-Les résultats montrent un environnement Windows classique avec :
+The results show a typical Windows environment with:
 - LDAP
 - SMB
 - Kerberos
-- Services Active Directory
+- Active Directory services
 
-Des identifiants initiaux sont fournis :
+Initial credentials are provided:
 
-- Utilisateur : `j.fleischman`
-- Mot de passe : `J0elTHEM4n1990!`
+- User: `j.fleischman`
+- Password: `J0elTHEM4n1990!`
 
 ---
 
-## Énumération SMB
+## SMB enumeration
 
-Je commence par lister les partages SMB accessibles :
+I start by listing the accessible SMB shares:
 
     smbclient -L 10.10.11.69 -U "fluffy.htb/j.fleischman"
 
-Parmi les partages disponibles, le partage **IT** attire mon attention.  
-Je teste l’accès :
+Among the available shares, the **IT** share stands out.  
+I test access:
 
     smbclient \\10.10.11.69\IT -U "fluffy.htb/j.fleischman"
 
-Résultat :
-- accès **lecture / écriture** autorisé
+Result:
+- **read / write** access allowed
 
-Cela représente une surface d’attaque critique.
-
----
-
-## Accès initial – Exploitation CVE-2025-24071 (NTLM Leak)
-
-Le partage IT étant accessible en écriture, j’exploite la vulnérabilité **CVE-2025-24071**.
-
-Principe :
-- upload d’un fichier `.library-ms` piégé
-- accompagné d’une archive `.zip`
-- lorsque la victime interagit avec le fichier, une authentification NTLM sortante est déclenchée
-
-Je dépose les fichiers malveillants sur le partage IT et je lance **Responder** sur ma machine attaquante.
-
-Résultat :
-- fuite d’un hash **NTLMv2**
-- utilisateur compromis : `p.agila`
+That's a critical attack surface.
 
 ---
 
-## Craquage du hash et nouvel accès
+## Initial access – Exploiting CVE-2025-24071 (NTLM Leak)
 
-Je cracke le hash NTLMv2 récupéré, ce qui me permet d’obtenir le mot de passe :
+Since the IT share is writable, I exploit **CVE-2025-24071**.
 
-- Utilisateur : `p.agila`
-- Mot de passe : `prometheusx-303`
+How it works:
+- upload a booby-trapped `.library-ms` file
+- paired with a `.zip` archive
+- when the victim interacts with the file, an outbound NTLM authentication is triggered
 
-Je dispose désormais d’un nouvel accès valide au domaine.
+I drop the malicious files on the IT share and launch **Responder** on my attacking machine.
+
+Result:
+- an **NTLMv2** hash leaks
+- compromised user: `p.agila`
 
 ---
 
-## Énumération Active Directory (BloodHound)
+## Cracking the hash and new access
 
-Avec les identifiants de `p.agila`, je lance une énumération Active Directory à l’aide de **BloodHound**.
+I crack the recovered NTLMv2 hash, which gives me the password:
 
-Résultat clé :
-- `p.agila` peut s’ajouter lui-même au groupe **SERVICE ACCOUNTS**
-- ce groupe possède des droits **GenericWrite** sur plusieurs comptes de service :
+- User: `p.agila`
+- Password: `prometheusx-303`
+
+I now have new valid access to the domain.
+
+---
+
+## Active Directory enumeration (BloodHound)
+
+With `p.agila`'s credentials, I run an Active Directory enumeration with **BloodHound**.
+
+Key finding:
+- `p.agila` can add itself to the **SERVICE ACCOUNTS** group
+- that group has **GenericWrite** rights over several service accounts:
   - `ca_svc`
   - `ldap_svc`
   - `winrm_svc`
 
-Cela ouvre la voie à une attaque avancée via **Shadow Credentials**.
+That opens the door to an advanced attack through **Shadow Credentials**.
 
 ---
 
-## Abus de Shadow Credentials (Certipy)
+## Shadow Credentials abuse (Certipy)
 
-Je commence par ajouter `p.agila` au groupe **SERVICE ACCOUNTS**.
+I start by adding `p.agila` to the **SERVICE ACCOUNTS** group.
 
-Ensuite, j’utilise **Certipy** pour exploiter les **Shadow Credentials** sur le compte `winrm_svc`.
+Then I use **Certipy** to exploit **Shadow Credentials** on the `winrm_svc` account.
 
-Principe :
-- injection d’une clé Kerberos dans l’objet AD de `winrm_svc`
-- récupération du **NT hash** du compte
+How it works:
+- inject a Kerberos key into the AD object of `winrm_svc`
+- recover the account's **NT hash**
 
-Grâce à ce hash, je peux me connecter à distance via **Evil-WinRM**.
-
----
-
-## Accès utilisateur via Evil-WinRM
-
-Je me connecte avec succès en tant que `winrm_svc` et je récupère le **premier flag utilisateur**.
-
-À ce stade, j’ai un accès interactif sur la machine.
+With that hash, I can connect remotely through **Evil-WinRM**.
 
 ---
 
-## Analyse des services de certificats AD (AD CS)
+## User access through Evil-WinRM
 
-Je poursuis l’énumération et j’analyse l’infrastructure **Active Directory Certificate Services**.
+I connect successfully as `winrm_svc` and grab the **first user flag**.
 
-Je découvre une vulnérabilité critique :
-- **ESC16** sur l’autorité de certification :
+At this point I have interactive access on the machine.
+
+---
+
+## Analyzing AD Certificate Services (AD CS)
+
+I keep enumerating and analyze the **Active Directory Certificate Services** infrastructure.
+
+I find a critical vulnerability:
+- **ESC16** on the certificate authority:
   - `fluffy-DC01-CA`
 
-Le compte `p.agila` possède des droits hérités sur le compte `ca_svc`, ce qui rend l’exploitation possible.
+The `p.agila` account has inherited rights over `ca_svc`, which makes the exploitation possible.
 
 ---
 
-## Exploitation ESC16 – Abus de certificats
+## ESC16 exploitation – Certificate abuse
 
-Étapes de l’attaque :
+Attack steps:
 
-1. Je modifie temporairement l’UPN du compte `ca_svc` pour le définir comme :
+1. I temporarily change the UPN of `ca_svc` to set it to:
    
        administrator
 
-2. Je demande un certificat via un template d’authentification client valide
+2. I request a certificate through a valid client-authentication template
 
-3. Une fois le certificat obtenu, je restaure immédiatement l’UPN original de `ca_svc` afin de limiter les traces visibles
+3. Once I have the certificate, I immediately restore `ca_svc`'s original UPN to limit visible traces
 
 ---
 
-## Accès Domain Administrator
+## Domain Administrator access
 
-À l’aide du certificat récupéré, j’utilise :
+With the recovered certificate, I use:
 
     certipy auth
 
-Cela me permet :
-- d’obtenir un TGT Kerberos
-- de récupérer le **NT hash de l’administrateur du domaine**
+This lets me:
+- get a Kerberos TGT
+- recover the **domain administrator's NT hash**
 
-Je dispose désormais d’un accès **Domain Admin** complet.
+I now have full **Domain Admin** access.
 
-Je peux alors lire le **flag root**.
+I can then read the **root flag**.
 
 ---
 
-## Chaîne d’attaque récapitulative
+## Attack-chain summary
 
-- Accès initial via identifiants fournis
-- Énumération SMB (partage IT en écriture)
-- Exploitation CVE-2025-24071 (NTLM leak)
-- Craquage du hash NTLMv2
-- Énumération AD via BloodHound
-- Abus de GenericWrite sur comptes de service
-- Exploitation Shadow Credentials (Certipy)
-- Accès WinRM
-- Exploitation AD CS (ESC16)
-- Compromission Domain Administrator
+- Initial access with provided credentials
+- SMB enumeration (writable IT share)
+- CVE-2025-24071 exploitation (NTLM leak)
+- Cracking the NTLMv2 hash
+- AD enumeration with BloodHound
+- GenericWrite abuse on service accounts
+- Shadow Credentials exploitation (Certipy)
+- WinRM access
+- AD CS exploitation (ESC16)
+- Domain Administrator compromise
 
 ---
 
 ## Conclusion
 
-Ce challenge met en évidence :
-- les risques liés aux partages SMB mal configurés
-- l’impact critique des fuites NTLM
-- la dangerosité des droits AD mal délégués
-- la puissance des attaques modernes contre AD CS
+This challenge shows:
+- the risk of misconfigured SMB shares
+- the critical impact of NTLM leaks
+- how dangerous poorly delegated AD rights are
+- the power of modern attacks against AD CS
 
-L’exploitation combine des techniques **réalistes**, **actuelles** et **avancées** d’attaque Active Directory.
+The exploitation combines realistic, current and advanced Active Directory attack techniques.
 
 ---
 
-## Compétences démontrées
+## Skills demonstrated
 
-- Énumération SMB et Active Directory
-- Exploitation NTLM (Responder)
-- Craquage de hash NTLMv2
-- Analyse de graphes AD (BloodHound)
-- Abus de permissions AD (GenericWrite)
+- SMB and Active Directory enumeration
+- NTLM exploitation (Responder)
+- NTLMv2 hash cracking
+- AD graph analysis (BloodHound)
+- AD permission abuse (GenericWrite)
 - Shadow Credentials (Certipy)
-- Attaques AD CS (ESC16)
-- Accès WinRM et post-exploitation Windows
-- Compromission Domain Admin
+- AD CS attacks (ESC16)
+- WinRM access and Windows post-exploitation
+- Domain Admin compromise

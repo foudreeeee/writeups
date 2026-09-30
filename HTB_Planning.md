@@ -1,171 +1,171 @@
 # CTF – Planning (Writeup)
 
-## Contexte
+## Context
 
-Dans ce challenge Hack The Box, la machine cible est accessible à l’adresse `10.10.11.68` sous le domaine `planning.htb`.  
-Des identifiants initiaux sont fournis, mais l’accès au site principal sur le port 80 n’est pas possible.
+In this Hack The Box challenge, the target machine is reachable at `10.10.11.68` under the domain `planning.htb`.  
+Initial credentials are provided, but the main site on port 80 isn't reachable.
 
-L’objectif est d’obtenir un accès initial via un service exposé, puis d’escalader mes privilèges jusqu’à obtenir un accès **root**.
-
----
-
-## Informations initiales
-
-Identifiants fournis au départ :
-
-- Utilisateur : admin  
-- Mot de passe : 0D5oT70Fq13EvB5r  
+The goal is to get initial access through an exposed service, then escalate privileges up to **root**.
 
 ---
 
-## Reconnaissance
+## Initial information
 
-Je commence par tester l’accès au site web sur le port 80, sans succès.  
-Je décide donc de rechercher des sous-domaines associés à `planning.htb`.
+Credentials provided at the start:
 
-Je lance un fuzzing DNS avec ffuf :
+- User: admin  
+- Password: 0D5oT70Fq13EvB5r  
+
+---
+
+## Recon
+
+I start by testing access to the website on port 80, with no luck.  
+So I decide to look for subdomains tied to `planning.htb`.
+
+I run DNS fuzzing with ffuf:
 
     ffuf -w /usr/share/SecLists/Discovery/DNS/bitquark-subdomains-top100000.txt \
          -u http://10.10.11.68/ \
          -H "Host: FUZZ.planning.htb" \
          -fs 178
 
-Ce fuzzing me permet d’identifier le sous-domaine suivant :
+This fuzzing lets me find the following subdomain:
 
 - `grafana.planning.htb`
 
 ---
 
-## Accès à Grafana
+## Reaching Grafana
 
-En accédant à `http://grafana.planning.htb`, je découvre une interface **Grafana**.
+Hitting `http://grafana.planning.htb`, I find a **Grafana** interface.
 
-Je tente les identifiants initiaux fournis :
+I try the initial credentials that were provided:
 
 - admin / 0D5oT70Fq13EvB5r  
 
-La connexion est **réussie**, ce qui me donne un accès authentifié à l’interface Grafana.
+The login **succeeds**, which gives me authenticated access to the Grafana interface.
 
 ---
 
-## Accès initial – Exploitation de Grafana
+## Initial access – Grafana exploitation
 
-Après identification de la version, je constate que Grafana est en version **11.0**, connue pour être vulnérable à une faille permettant l’exécution de commandes arbitraires avec des identifiants valides.
+After identifying the version, I see Grafana is version **11.0**, known to be vulnerable to a flaw that allows arbitrary command execution with valid credentials.
 
-Je trouve sur GitHub un script Python exploitant cette vulnérabilité.  
-À l’aide de ce script, j’envoie une commande permettant d’ouvrir un **reverse shell** vers ma machine.
+I find a Python script on GitHub that exploits this vulnerability.  
+Using it, I send a command that opens a **reverse shell** back to my machine.
 
-Je reçois alors un shell sur la machine cible.
+I get a shell on the target.
 
 ---
 
-## Post-exploitation – Variables d’environnement
+## Post-exploitation – Environment variables
 
-Une fois connecté, j’exécute la commande suivante afin d’inspecter les variables d’environnement :
+Once connected, I run the following to inspect the environment variables:
 
     env
 
-Je découvre des identifiants stockés en clair :
+I find credentials stored in cleartext:
 
-- Utilisateur : enzo  
-- Mot de passe : RioTecRANDEntANT!  
+- User: enzo  
+- Password: RioTecRANDEntANT!  
 
 ---
 
-## Accès SSH utilisateur
+## SSH user access
 
-Je teste immédiatement ces identifiants en SSH :
+I test these credentials over SSH right away:
 
     ssh enzo@10.10.11.68
 
-La connexion est réussie.  
-Je récupère alors le **flag utilisateur** (`user.txt`).
+The login succeeds.  
+I grab the **user flag** (`user.txt`).
 
 ---
 
-## Énumération locale
+## Local enumeration
 
-Je tente d’énumérer les privilèges sudo :
+I try to enumerate the sudo privileges:
 
     sudo -l
 
-Cette commande n’est pas autorisée pour l’utilisateur `enzo`.  
-Je décide donc de lancer **linPEAS** afin d’identifier d’autres vecteurs d’escalade.
+This command isn't allowed for `enzo`.  
+So I run **linPEAS** to find other escalation vectors.
 
-L’énumération met en évidence la présence d’un binaire intéressant :
+The enumeration surfaces an interesting binary:
 
 - `/tmp/bash`
 
 ---
 
-## Escalade de privilèges
+## Privilege escalation
 
-Le binaire `/tmp/bash` possède le bit **SUID** positionné.  
-Je l’exécute avec l’option `-p` afin de conserver les privilèges :
+The `/tmp/bash` binary has the **SUID** bit set.  
+I run it with `-p` to keep the privileges:
 
     /tmp/bash -p
 
-Cette commande me donne immédiatement un shell avec les privilèges **root**.
+This command gives me a shell with **root** privileges right away.
 
-Je peux alors accéder au fichier :
+I can then read the file:
 
     /root/root.txt
 
-et récupérer le **flag root**.
+and grab the **root flag**.
 
 ---
 
-## Note alternative
+## Alternative note
 
-Si le binaire `/tmp/bash` n’avait pas été présent, une autre piste aurait été exploitable :  
-un **service cron** exécuté en boucle avec les privilèges root.
+If the `/tmp/bash` binary hadn't been there, another path would have worked:  
+a **cron service** running in a loop with root privileges.
 
-Dans ce scénario, il aurait été possible de :
-- exploiter le cron
-- créer un tunnel
-- copier `/bin/bash`
-- et positionner le bit SUID pour obtenir un shell root
+In that scenario, it would have been possible to:
+- exploit the cron
+- set up a tunnel
+- copy `/bin/bash`
+- and set the SUID bit to get a root shell
 
 ---
 
-## Chaîne d’attaque récapitulative
+## Attack-chain summary
 
-- Accès initial impossible sur le port 80
-- Découverte du sous-domaine `grafana.planning.htb`
-- Authentification Grafana avec creds fournis
-- Exploitation Grafana 11.0 (RCE)
+- No initial access on port 80
+- Found the `grafana.planning.htb` subdomain
+- Grafana authentication with provided creds
+- Grafana 11.0 exploitation (RCE)
 - Reverse shell
-- Récupération de credentials via variables d’environnement
-- Accès SSH utilisateur
-- Découverte d’un binaire SUID (`/tmp/bash`)
-- Escalade de privilèges et accès root
+- Credential recovery through environment variables
+- SSH user access
+- Found a SUID binary (`/tmp/bash`)
+- Privilege escalation and root access
 
 ---
 
 ## Conclusion
 
-Ce challenge met en évidence :
-- l’importance du fuzzing de sous-domaines
-- les risques liés aux services administratifs exposés
-- le danger des identifiants stockés en clair dans les variables d’environnement
-- l’impact critique des binaires SUID laissés accessibles
+This challenge shows:
+- why subdomain fuzzing matters
+- the risk of exposed admin services
+- the danger of credentials stored in cleartext in environment variables
+- the critical impact of SUID binaries left accessible
 
-L’exploitation combine :
-- reconnaissance web
-- exploitation d’un service tiers vulnérable
+The exploitation combines:
+- web recon
+- exploiting a vulnerable third-party service
 - post-exploitation
-- escalade de privilèges locale jusqu’au **root**
+- local privilege escalation up to **root**
 
 ---
 
-## Compétences démontrées
+## Skills demonstrated
 
-- Fuzzing DNS (ffuf)
-- Reconnaissance web
-- Exploitation de Grafana
+- DNS fuzzing (ffuf)
+- Web recon
+- Grafana exploitation
 - Reverse shell
-- Analyse des variables d’environnement
-- Accès SSH
-- Énumération locale Linux
-- Exploitation de binaires SUID
-- Escalade de privilèges
+- Environment variable analysis
+- SSH access
+- Linux local enumeration
+- SUID binary exploitation
+- Privilege escalation

